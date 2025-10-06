@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createClient } from '@/lib/supabase/client';
 
 interface Thought {
-  id: number;
+  id: string;
   text: string;
   encouragement: string;
+  created_at: string;
 }
 
 const encouragements = [
@@ -26,25 +28,62 @@ export default function Home() {
   const [thoughts, setThoughts] = useState<Thought[]>([]);
   const [showPopup, setShowPopup] = useState(false);
   const [currentEncouragement, setCurrentEncouragement] = useState('');
+  const [loading, setLoading] = useState(false);
+  const supabase = createClient();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  // 초기 데이터 로드
+  useEffect(() => {
+    fetchThoughts();
+  }, []);
+
+  const fetchThoughts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('thoughts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      if (data) setThoughts(data);
+    } catch (error) {
+      console.error('Error fetching thoughts:', error);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || loading) return;
 
+    setLoading(true);
     const randomEncouragement = encouragements[Math.floor(Math.random() * encouragements.length)];
 
-    const newThought: Thought = {
-      id: Date.now(),
-      text: inputText,
-      encouragement: randomEncouragement
-    };
+    try {
+      const { data, error } = await supabase
+        .from('thoughts')
+        .insert([
+          {
+            text: inputText,
+            encouragement: randomEncouragement
+          }
+        ])
+        .select()
+        .single();
 
-    setThoughts([newThought, ...thoughts]);
-    setCurrentEncouragement(randomEncouragement);
-    setShowPopup(true);
-    setInputText('');
+      if (error) throw error;
 
-    setTimeout(() => setShowPopup(false), 3000);
+      if (data) {
+        setThoughts([data, ...thoughts]);
+        setCurrentEncouragement(randomEncouragement);
+        setShowPopup(true);
+        setInputText('');
+        setTimeout(() => setShowPopup(false), 3000);
+      }
+    } catch (error) {
+      console.error('Error saving thought:', error);
+      alert('생각을 저장하는데 실패했습니다. 다시 시도해주세요.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -73,9 +112,9 @@ export default function Home() {
             <button
               type="submit"
               className="mt-4 w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-semibold rounded-xl hover:shadow-lg transform hover:scale-[1.02] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!inputText.trim()}
+              disabled={!inputText.trim() || loading}
             >
-              격려해 주세요
+              {loading ? '저장 중...' : '격려해 주세요'}
             </button>
           </div>
         </form>
